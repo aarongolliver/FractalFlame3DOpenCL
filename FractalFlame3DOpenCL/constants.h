@@ -1,5 +1,5 @@
-#define n_kernels (1024 * 8)
-#define points_kernel (1024 * 6)
+#define n_kernels (1024 * 4)
+#define points_kernel (1024 * 6 * 2)
 
 #define pc_size (n_kernels * points_kernel)
 

@@ -6,6 +6,7 @@
 #include <iostream>
 #include <string>
 #include <iterator>
+#include <ctime>
 
 #include "main.h"
 #include "rdrand.h"
@@ -18,6 +19,7 @@ using namespace std;
 
 
 int main(int argc, char **argv){
+	// srand(time(NULL));
 	cl_int err;
 	
 	// get all the availiable platforms
@@ -74,6 +76,8 @@ int main(int argc, char **argv){
 
 	checkErr(err, "Buffer::Buffer() (rand buffer) ");
 	affinetransform *affs = new affinetransform[4];
+
+	checkErr(err, "Buffer::Buffer() (affs buffer) ");
 	for (int i = 0; i < 4; i++){
 		rdrand_f32(&affs[i].a);
 		rdrand_f32(&affs[i].b);
@@ -92,14 +96,12 @@ int main(int argc, char **argv){
 		rdrand_f32(&affs[i].gre);
 		rdrand_f32(&affs[i].blu);
 
-		affs[i].red = fabs(affs[i].red);
-		affs[i].gre = fabs(affs[i].gre);
-		affs[i].blu = fabs(affs[i].blu);
+		affs[i].red = 1; fabs(affs[i].red);
+		affs[i].gre = 1; fabs(affs[i].gre);
+		affs[i].blu = 1; fabs(affs[i].blu);
 
 		printf("%f %f %f %f\n", affs[i].a, affs[i].b, affs[i].c, affs[i].red);
 	}
-	checkErr(err, "Buffer::Buffer() (affs buffer) ");
-
 	cl::Buffer cl_affs(
 		context,
 		CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR,
@@ -139,16 +141,17 @@ int main(int argc, char **argv){
 	checkErr(err, "CommandQueue::CommandQueue()");
 
 	cl::Event frontBufferEvent;
+	queue.enqueueWriteBuffer(
+		cl_pc_buf, CL_TRUE, 0, sizeof(pointcloud)* pc_size, pc_buf);
 
 	queue.enqueueWriteBuffer(
-		cl_rand_buf, CL_TRUE, 0, sizeof(unsigned int) * rand_buf_size, rand_buf);
-	
+		cl_affs, CL_TRUE, 0, sizeof(affinetransform)* 4, affs);
+
+	HistoBuffer h(wid, hei);
+
 	queue.enqueueWriteBuffer(
-		cl_rand_buf, CL_TRUE, 0, sizeof(unsigned int) * rand_buf_size, rand_buf);
-	
-	queue.enqueueWriteBuffer(
-		cl_pc_buf, CL_TRUE, 0, sizeof(pointcloud) * pc_size, pc_buf);
-	
+		cl_rand_buf, CL_TRUE, 0, sizeof(unsigned int)* rand_buf_size, rand_buf);
+
 	err = queue.enqueueNDRangeKernel(
 		kernel,
 		cl::NullRange,
@@ -166,24 +169,56 @@ int main(int argc, char **argv){
 		sizeof(pointcloud)* pc_size,
 		pc_buf);
 	checkErr(err, "CommandQueue::enqueueReadBuffer()");
-	
-	for (int i = 0; i < points_kernel; i++)
-		cout << pc_buf[i].x << endl;
 
-	HistoBuffer h(wid, hei);
+	for (int gpuiters = 0; gpuiters < 1000; gpuiters++){
+		cout << gpuiters << " ";
+#pragma omp parallel for
+		for (int i = 0; i < rand_buf_size; i++){
+			rdrand_u32(rand_buf + i);
+		}
 
-	for (int i = 0; i < pc_size; i++){
-		float px = pc_buf[i].x * wid / 10.0f + wid / 2;
-		float py = pc_buf[i].y * hei / 10.0f + hei / 2;
+		frontBufferEvent.wait();
 
-		int x = (int)px;
-		int y = (int)py;
+		queue.enqueueWriteBuffer(
+			cl_rand_buf, CL_TRUE, 0, sizeof(unsigned int)* rand_buf_size, rand_buf);
 
-		if (x >= 0 && x < wid && y >= 0 && y < hei){
-			h.at(x, y).r += pc_buf[i].r;
-			h.at(x, y).g += pc_buf[i].g;
-			h.at(x, y).b += pc_buf[i].b;
-			h.at(x, y).a++;
+		
+		err = queue.enqueueReadBuffer(
+			cl_pc_buf,
+			CL_TRUE, // blocking
+			0,
+			sizeof(pointcloud) * pc_size,
+			pc_buf);
+
+		checkErr(err, "CommandQueue::enqueueReadBuffer()");
+
+		err = queue.enqueueNDRangeKernel(
+			kernel,
+			cl::NullRange,
+			cl::NDRange(n_kernels),
+			cl::NDRange(16, 16),
+			NULL, // this would be a vector to events that must be completed before this starts! queue up the RNG here :)
+			&frontBufferEvent);
+
+		checkErr(err, "CommandQueue::enqueueNDRangeKernel()");
+
+		cout << "gpu part done" << endl;
+		//for (int i = 0; i < points_kernel; i++)
+		//	cout << (pc_buf[i].x) << endl;
+
+		for (int i = 0; i < pc_size; i++){
+			float px = pc_buf[i].x * wid / 2.0f + wid / 2;
+			float py = pc_buf[i].y * hei / 2.0f + hei / 2;
+
+			int x = (int)px;
+			int y = (int)py;
+
+			if (x >= 0 && x < wid && y >= 0 && y < hei){
+				h.at(x, y).r += pc_buf[i].r;
+				h.at(x, y).g += pc_buf[i].g;
+				h.at(x, y).b += pc_buf[i].b;
+				h.at(x, y).a++;
+			}
 		}
 	}
 
@@ -201,21 +236,26 @@ int main(int argc, char **argv){
 
 	for (int y = 0; y < hei; y++){
 		for (int x = 0; x < wid; x++){
-			float alpha = h.at(x, y).a;
-			float scalar = log(alpha) / log_max_a;
+			if (h.at(x, y).a != 0){
+				float alpha = h.at(x, y).a;
+				float scalar = log(alpha) / log_max_a;
 
-			float r = scalar * h.at(x, y).r * 0xff;
-			float g = scalar * h.at(x, y).g * 0xff;
-			float b = scalar * h.at(x, y).b * 0xff;
+				int r = (int)abs(scalar * h.at(x, y).r * 0xff);
+				int g = (int)abs(scalar * h.at(x, y).g * 0xff);
+				int b = (int)abs(scalar * h.at(x, y).b * 0xff);
 
-			image.at(x, y) = Color(r, g, b);
+				//cout << "red " << scalar << endl;
+				image.at(x, y) = Color(r, g, b);
+			}
+			else {
+				image.at(x, y) = Color(0, 0, 0);
+			}
 		}
 	}
 
 	simplePPM_write_ppm("fractal.ppm", wid, hei, &image.at(0, 0)[0]);
 
 	cout << "done" << endl;
-	getchar();
 
 	exit(EXIT_SUCCESS);
 }

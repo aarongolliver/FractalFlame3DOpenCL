@@ -47,35 +47,36 @@ __kernel void mainloop(__global pointcloud *pc, __global uint *randoms, __global
 	int rand_offset = pos;
 
 	__global uint *rand = randoms;
-	uint rand_xor = *(rand + rand_offset++);
+	const uint rand_xor = *(rand + rand_offset++);
 
 	vec3 p = {1,1,1};
 	col c = {0, 0, 0};
-	for(int i = -200; i < points_kernel; i++){
-		affinetransform rand_aff = affs[rand_uint(&rand_offset, rand, rand_xor) % 5];
+	for(int i = -20; i < points_kernel; i++){
+		uint rand_idx = rand_uint(&rand_offset, rand, rand_xor);
+		affinetransform rand_aff = affs[rand_idx % 4];
 		p = apply(rand_aff, p);
 		
 		float rsq = (p.x * p.x) + (p.y * p.y) + (p.z * p.z);
 		float r = native_sqrt(rsq);
 
 		vec3 p2;
-		p2.x = p.x * sin(rsq) - p.y * cos(rsq);
-		p2.y = p.x * cos(rsq) + p.y * sin(rsq);
-		p2.z = p.z;
+		// p2.x = p.x * sin(rsq) - p.y * cos(rsq);
+		// p2.y = p.x * cos(rsq) + p.y * sin(rsq);
+		// p2.z = p.z;
 
 
-		p2.x = sin(p.x);
-		p2.y = sin(p.y);
-		p2.z = sin(p.z);
+		p2.x = native_sin(p.x);
+		p2.y = native_sin(p.y);
+		p2.z = native_sin(p.z);
 
 		p = p2;
 		c.r += rand_aff.red;
 		c.g += rand_aff.gre;
 		c.b += rand_aff.blu;
 		
-		c.r /= 2.0f;
-		c.g /= 2.0f;
-		c.b /= 2.0f;
+		c.r *= 0.5f;
+		c.g *= 0.5f;
+		c.b *= 0.5f;
 
 		if(i >= 0){
 			pc[pos + i].x = p.x;
@@ -87,13 +88,6 @@ __kernel void mainloop(__global pointcloud *pc, __global uint *randoms, __global
 			pc[pos + i].b = c.b;	
 		}
 	}
-
-	//pc[pos].x = p.x;
-	//pc[pos].y = p.y;
-	//pc[pos].z = p.z;
-	//pc[pos].r = tid0;
-	//pc[pos].g = p.y;
-	//pc[pos].b = p.z;
 }
 
 vec3 apply(const affinetransform aff, const vec3 p) {

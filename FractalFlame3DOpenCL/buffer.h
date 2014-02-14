@@ -38,7 +38,7 @@ private:
 			return;
 		}
 
-		data = (Color*) malloc(this->w * this->h * sizeof(Color));
+		data = (Color*) calloc(this->w * this->h, sizeof(Color));
 	}
 };
 
