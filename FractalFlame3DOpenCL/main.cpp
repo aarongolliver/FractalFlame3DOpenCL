@@ -19,7 +19,8 @@ using namespace std;
 
 
 int main(int argc, char **argv){
-	// srand(time(NULL));
+	//srand(time(NULL));
+	srand(1);
 	cl_int err;
 	
 	// get all the availiable platforms
@@ -96,11 +97,16 @@ int main(int argc, char **argv){
 		rdrand_f32(&affs[i].gre);
 		rdrand_f32(&affs[i].blu);
 
-		affs[i].red = 1; fabs(affs[i].red);
-		affs[i].gre = 1; fabs(affs[i].gre);
-		affs[i].blu = 1; fabs(affs[i].blu);
+		affs[i].red = fabs(affs[i].red);
+		affs[i].gre = fabs(affs[i].gre);
+		affs[i].blu = fabs(affs[i].blu);
 
-		printf("%f %f %f %f\n", affs[i].a, affs[i].b, affs[i].c, affs[i].red);
+		float max_c = max(affs[i].red, max(affs[i].gre, affs[i].blu));
+
+		affs[i].red /= max_c;
+		affs[i].gre /= max_c;
+		affs[i].blu /= max_c;
+
 	}
 	cl::Buffer cl_affs(
 		context,
@@ -156,26 +162,23 @@ int main(int argc, char **argv){
 		kernel,
 		cl::NullRange,
 		cl::NDRange(n_kernels),
-		cl::NDRange(16, 16),
+		cl::NDRange(16 * 16),
 		NULL, // this would be a vector to events that must be completed before this starts! queue up the RNG here :)
 		&frontBufferEvent);
 	checkErr(err, "CommandQueue::enqueueNDRangeKernel()");
 
 	frontBufferEvent.wait();
-	err = queue.enqueueReadBuffer(
-		cl_pc_buf,
-		CL_TRUE, // blocking
-		0,
-		sizeof(pointcloud)* pc_size,
-		pc_buf);
-	checkErr(err, "CommandQueue::enqueueReadBuffer()");
-
-	for (int gpuiters = 0; gpuiters < 1000; gpuiters++){
+	unsigned int randinit = rand_buf[0];
+	unsigned int max_a = 1;
+	for (int gpuiters = 0; gpuiters < 2; gpuiters++){
 		cout << gpuiters << " ";
 #pragma omp parallel for
 		for (int i = 0; i < rand_buf_size; i++){
 			rdrand_u32(rand_buf + i);
 		}
+
+		if (randinit == rand_buf[0])
+			cout << "MISTAKE" << endl;
 
 		frontBufferEvent.wait();
 
@@ -196,7 +199,7 @@ int main(int argc, char **argv){
 			kernel,
 			cl::NullRange,
 			cl::NDRange(n_kernels),
-			cl::NDRange(16, 16),
+			cl::NDRange(16 * 16),
 			NULL, // this would be a vector to events that must be completed before this starts! queue up the RNG here :)
 			&frontBufferEvent);
 
@@ -207,8 +210,8 @@ int main(int argc, char **argv){
 		//	cout << (pc_buf[i].x) << endl;
 
 		for (int i = 0; i < pc_size; i++){
-			float px = pc_buf[i].x * wid / 2.0f + wid / 2;
-			float py = pc_buf[i].y * hei / 2.0f + hei / 2;
+			float px = pc_buf[i].x * wid / 4.0f + wid / 2;
+			float py = pc_buf[i].y * hei / 4.0f + hei / 2;
 
 			int x = (int)px;
 			int y = (int)py;
@@ -217,20 +220,16 @@ int main(int argc, char **argv){
 				h.at(x, y).r += pc_buf[i].r;
 				h.at(x, y).g += pc_buf[i].g;
 				h.at(x, y).b += pc_buf[i].b;
+
 				h.at(x, y).a++;
+
+				max_a = max(max_a, h.at(x, y).a);
 			}
 		}
 	}
+	frontBufferEvent.wait();
 
-	unsigned int max_a = 1;
-	for (int y = 0; y < hei; y++){
-		for (int x = 0; x < wid; x++){
-			// int offset = x + y*wid;
-			max_a = max(max_a, h.at(x, y).a);
-		}
-	}
-
-	float log_max_a = log((float)max_a);
+	float inv_log_max_a = 1.0f / log((float)max_a);
 
 	ColBuffer image(wid, hei);
 
@@ -238,11 +237,21 @@ int main(int argc, char **argv){
 		for (int x = 0; x < wid; x++){
 			if (h.at(x, y).a != 0){
 				float alpha = h.at(x, y).a;
-				float scalar = log(alpha) / log_max_a;
+				float scalar = log(alpha) * inv_log_max_a;
 
-				int r = (int)abs(scalar * h.at(x, y).r * 0xff);
-				int g = (int)abs(scalar * h.at(x, y).g * 0xff);
-				int b = (int)abs(scalar * h.at(x, y).b * 0xff);
+				float hr = h.at(x, y).r;
+				float hg = h.at(x, y).g;
+				float hb = h.at(x, y).b;
+
+				float hmax = max(hr, max(hg, hb));
+
+				hr /= hmax;
+				hg /= hmax;
+				hb /= hmax;
+
+				int r = (int) abs(scalar * hr * 0xff);
+				int g = (int) abs(scalar * hg * 0xff);
+				int b = (int) abs(scalar * hb * 0xff);
 
 				//cout << "red " << scalar << endl;
 				image.at(x, y) = Color(r, g, b);

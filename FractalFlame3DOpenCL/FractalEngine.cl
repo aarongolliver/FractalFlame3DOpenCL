@@ -1,9 +1,12 @@
-#define n_kernels (1024 * 8)
-#define points_kernel (1024 * 6)
+#define n_kernels (1024 * 4)
+#define points_kernel (1024 * 6 * 3)
 
 #define pc_size (n_kernels * points_kernel)
 
 #define rand_buf_size (n_kernels * points_kernel)
+
+#define wid 512
+#define hei 512
 
 typedef struct {
 	float x, y, z, r, g, b;
@@ -49,7 +52,7 @@ __kernel void mainloop(__global pointcloud *pc, __global uint *randoms, __global
 	__global uint *rand = randoms;
 	const uint rand_xor = *(rand + rand_offset++);
 
-	vec3 p = {1,1,1};
+	vec3 p = {0, 0, 0};
 	col c = {0, 0, 0};
 	for(int i = -20; i < points_kernel; i++){
 		uint rand_idx = rand_uint(&rand_offset, rand, rand_xor);
