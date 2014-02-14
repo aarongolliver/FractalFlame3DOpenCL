@@ -150,9 +150,16 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="simplePPM.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="buffer.h" />
+    <ClInclude Include="constants.h" />
+    <ClInclude Include="datatypes.h" />
+    <ClInclude Include="GenVector.h" />
     <ClInclude Include="main.h" />
+    <ClInclude Include="rdrand.h" />
+    <ClInclude Include="simplePPM.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="FractalEngine.cl" />

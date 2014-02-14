@@ -1,3 +1,10 @@
+#define n_kernels (1024 * 8)
+#define points_kernel (1024 * 6)
+
+#define pc_size (n_kernels * points_kernel)
+
+#define rand_buf_size (n_kernels * points_kernel)
+
 typedef struct {
 	float x, y, z, r, g, b;
 } pointcloud;
@@ -22,41 +29,30 @@ typedef struct {
 
 vec3 apply(const affinetransform aff, const vec3 p);
 
-uint rand_uint(u2* rvec);
 
-inline float rand_float(u2* rvec);
 
-__kernel void mainloop(__global pointcloud *pc, __global u2* randoms){
+uint rand_uint(int *rand_offset, __global uint *randoms, uint rand_xor){
+	(*rand_offset)++;
+	*rand_offset = *rand_offset % rand_buf_size;
+
+	return (*(randoms + *rand_offset)) ^ rand_xor;
+}
+
+#define rand_float(offs, rand, rand_xor) ((float)(rand_uint(offs, rand, rand_xor)) / (float)(0xFFFFFFFF))
+
+__kernel void mainloop(__global pointcloud *pc, __global uint *randoms, __global affinetransform *affs){
 	size_t tid0 = get_global_id(0); // x
-	size_t tid1 = get_global_id(1); // y
 
-	const int wid = 1024;
+	size_t pos = tid0 * points_kernel;
+	int rand_offset = pos;
 
-	size_t pos = tid0 * wid;
-
-	u2 rand1 = randoms[pos];
-	u2 *rand = &rand1;
-	
-	affinetransform aff[4];
-	for(int i = 0; i < 4; i++){
-		aff[i].a = rand_float(rand);
-		aff[i].b = rand_float(rand);
-		aff[i].c = rand_float(rand);
-		aff[i].d = rand_float(rand);
-		aff[i].e = rand_float(rand);
-		aff[i].f = rand_float(rand);
-		aff[i].g = rand_float(rand);
-		aff[i].h = rand_float(rand);
-		aff[i].i = rand_float(rand);
-		aff[i].j = rand_float(rand);
-		aff[i].k = rand_float(rand);
-		aff[i].l = rand_float(rand);
-	}
+	__global uint *rand = randoms;
+	uint rand_xor = *(rand + rand_offset++);
 
 	vec3 p = {1,1,1};
 	col c = {0, 0, 0};
-	for(int i = -20; i < wid; i++){
-		affinetransform rand_aff = aff[rand_uint(rand) % 4];
+	for(int i = -200; i < points_kernel; i++){
+		affinetransform rand_aff = affs[rand_uint(&rand_offset, rand, rand_xor) % 5];
 		p = apply(rand_aff, p);
 		
 		float rsq = (p.x * p.x) + (p.y * p.y) + (p.z * p.z);
@@ -66,6 +62,11 @@ __kernel void mainloop(__global pointcloud *pc, __global u2* randoms){
 		p2.x = p.x * sin(rsq) - p.y * cos(rsq);
 		p2.y = p.x * cos(rsq) + p.y * sin(rsq);
 		p2.z = p.z;
+
+
+		p2.x = sin(p.x);
+		p2.y = sin(p.y);
+		p2.z = sin(p.z);
 
 		p = p2;
 		c.r += rand_aff.red;
@@ -81,9 +82,9 @@ __kernel void mainloop(__global pointcloud *pc, __global u2* randoms){
 			pc[pos + i].y = p.y;
 			pc[pos + i].z = p.z;
 
-			pc[pos + i].r = (float)rand->x;
+			pc[pos + i].r = c.r;
 			pc[pos + i].g = c.g;
-			pc[pos + i].b = c.b;		
+			pc[pos + i].b = c.b;	
 		}
 	}
 
@@ -101,22 +102,4 @@ vec3 apply(const affinetransform aff, const vec3 p) {
 	ret.y = (p.x * aff.e) + (p.y * aff.f) + (p.z * aff.g) + (aff.h);
 	ret.z = (p.x * aff.i) + (p.y * aff.j) + (p.z * aff.k) + (aff.l);
 	return ret;
-}
-
-
-uint rand_uint(u2* rvec) {
-    #define A 4294883355U
-    uint x=rvec->x, c=rvec->y;
-    uint res = x ^ c;
-    uint hi = mul_hi(x,A);
-    x = x*A + c;
-    c = hi + (x<c);
-    rvec->x = x;
-    rvec->x = c;
-    return res;
-    #undef A
-}
-
-inline float rand_float(u2* rvec) {
-    return (float)(rand_uint(rvec)) / (float)(0xFFFFFFFF);
 }

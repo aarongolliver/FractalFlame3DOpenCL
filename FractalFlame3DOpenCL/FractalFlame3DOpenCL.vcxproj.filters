@@ -18,9 +18,30 @@
     <ClCompile Include="main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="simplePPM.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="main.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="rdrand.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="datatypes.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="constants.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="buffer.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="GenVector.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="simplePPM.h">
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>

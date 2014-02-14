@@ -24,4 +24,9 @@ typedef struct {
 	unsigned int y;
 } u2;
 
+typedef struct {
+	float a, b, c, d, e, f, g, h, i, j, k, l;
+	float red, gre, blu;
+} affinetransform;
+
 #endif
